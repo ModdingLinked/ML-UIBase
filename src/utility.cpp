@@ -447,12 +447,32 @@ namespace shell
     return Result::makeSuccess(process);
   }
 
-  Result ExploreDirectory(const QFileInfo& info)
+Result ExploreDirectory(const QFileInfo& info)
   {
     const auto path    = QDir::toNativeSeparators(info.absoluteFilePath());
     const auto ws_path = path.toStdWString();
 
-    return ShellExecuteWrapper(L"explore", ws_path.c_str(), nullptr);
+    std::wstring command = L"cmd.exe /c start \"\" \"" + ws_path + L"\"";
+
+    STARTUPINFOW si        = {};
+    PROCESS_INFORMATION pi = {};
+
+    si.cb          = sizeof(si);
+    si.dwFlags     = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+
+    if (!::CreateProcessW(NULL, const_cast<wchar_t*>(command.c_str()), NULL, NULL,
+                          FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+      const auto e = ::GetLastError();
+      LogShellFailure(L"open", ws_path.c_str(), nullptr, e);
+      return Result::makeFailure(e, QString::fromStdWString(formatSystemMessage(e)));
+    }
+
+    // don't close it if you want memory leaks
+    ::CloseHandle(pi.hProcess);
+    ::CloseHandle(pi.hThread);
+
+    return Result::makeSuccess(nullptr);
   }
 
   Result ExploreFileInDirectory(const QFileInfo& info)
