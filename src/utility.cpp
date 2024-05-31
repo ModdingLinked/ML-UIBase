@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #include <QApplication>
 #include <QBuffer>
 #include <QCollator>
+#include <QDesktopServices>
 #include <QDir>
 #include <QImage>
 #include <QScreen>
@@ -450,57 +451,32 @@ namespace shell
 
 Result ExploreDirectory(const QFileInfo& info)
   {
-    const auto path    = QDir::toNativeSeparators(info.absoluteFilePath());
-    const auto ws_path = path.toStdWString();
+    const auto path = QDir::toNativeSeparators(info.absoluteFilePath());
+    const QUrl url  = QUrl::fromLocalFile(path);
 
-    std::wstring command = L"cmd.exe /c start \"\" \"" + ws_path + L"\"";
-
-    STARTUPINFOW si        = {};
-    PROCESS_INFORMATION pi = {};
-
-    si.cb          = sizeof(si);
-    si.dwFlags     = STARTF_USESHOWWINDOW;
-    si.wShowWindow = SW_HIDE;
-
-    if (!::CreateProcessW(NULL, const_cast<wchar_t*>(command.c_str()), NULL, NULL,
-                          FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+    if (!QDesktopServices::openUrl(url)) {
       const auto e = ::GetLastError();
-      LogShellFailure(L"open", ws_path.c_str(), nullptr, e);
+      LogShellFailure(L"openUrl", path.toStdWString().c_str(), nullptr, e);
+
       return Result::makeFailure(e, QString::fromStdWString(formatSystemMessage(e)));
     }
 
-    // don't close it if you want memory leaks
-    ::CloseHandle(pi.hProcess);
-    ::CloseHandle(pi.hThread);
-
-    return Result::makeSuccess(nullptr);
+    return Result::makeSuccess(INVALID_HANDLE_VALUE);
   }
 
-  Result ExploreFileInDirectory(const QFileInfo& info)
+Result ExploreFileInDirectory(const QFileInfo& info)
   {
-    const auto path      = QDir::toNativeSeparators(info.absoluteFilePath());
-    const auto params    = "/select,\"" + path + "\"";
-    const auto ws_params = params.toStdWString();
+    const auto dirPath = QDir::toNativeSeparators(info.absolutePath());
+    const QUrl dirUrl  = QUrl::fromLocalFile(dirPath);
 
-    return ShellExecuteWrapper(nullptr, L"explorer", ws_params.c_str());
-  }
+    if (!QDesktopServices::openUrl(dirUrl)) {
+      const auto e = ::GetLastError();
+      LogShellFailure(L"openUrl", dirPath.toStdWString().c_str(), nullptr, e);
 
-  Result Explore(const QFileInfo& info)
-  {
-    if (info.isFile()) {
-      return ExploreFileInDirectory(info);
-    } else if (info.isDir()) {
-      return ExploreDirectory(info);
-    } else {
-      // try the parent directory
-      const auto parent = info.dir();
-
-      if (parent.exists()) {
-        return ExploreDirectory(QFileInfo(parent.absolutePath()));
-      } else {
-        return Result::makeFailure(ERROR_FILE_NOT_FOUND);
-      }
+      return Result::makeFailure(e, QString::fromStdWString(formatSystemMessage(e)));
     }
+
+    return Result::makeSuccess(INVALID_HANDLE_VALUE);
   }
 
   Result Explore(const QString& path)
