@@ -41,6 +41,14 @@ namespace MOBase
 {
 
 /**
+ * @brief get the hash of a file
+ *
+ * @param absolute path to the filename
+ * @return int hash of the file
+ **/
+QDLLEXPORT uint64_t getFileHash(const std::wstring& filePath);
+
+/**
  * @brief remove the specified directory including all sub-directories
  *
  * @param dirName name of the directory to delete
