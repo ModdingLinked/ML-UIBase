@@ -21,7 +21,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #include "utility.h"
 #include "log.h"
 #include "report.h"
-#include "xxhash.h"
 #include <QApplication>
 #include <QBuffer>
 #include <QCollator>
@@ -42,30 +41,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 
 namespace MOBase
 {
-
-uint64_t getFileHash(const std::wstring& filePath)
-{
-  FILE* file = _wfopen(filePath.c_str(), L"rb");
-  if (file == nullptr) {
-    throw std::runtime_error("Failed to open file to calculate the file hash");
-  }
-  const size_t bufferSize = static_cast<size_t>(64) * 1024;
-  std::vector<char> buffer(bufferSize);
-  XXH64_state_t* state = XXH64_createState();
-  if (state == nullptr) {
-    fclose(file);
-    throw std::runtime_error("Failed to create xxHash state");
-  }
-  XXH64_reset(state, 0);
-  size_t bytesRead = 0;
-  while ((bytesRead = fread(buffer.data(), 1, bufferSize, file)) > 0) {
-    XXH64_update(state, buffer.data(), bytesRead);
-  }
-  uint64_t hash = XXH64_digest(state);
-  XXH64_freeState(state);
-  fclose(file);
-  return hash;
-}
 
 bool removeDir(const QString& dirName)
 {
