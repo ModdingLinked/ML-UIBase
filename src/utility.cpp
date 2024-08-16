@@ -24,7 +24,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #include <QApplication>
 #include <QBuffer>
 #include <QCollator>
-#include <QDesktopServices>
 #include <QDir>
 #include <QImage>
 #include <QScreen>
@@ -451,32 +450,19 @@ namespace shell
 
   Result ExploreDirectory(const QFileInfo& info)
   {
-    const auto path = QDir::toNativeSeparators(info.absoluteFilePath());
-    const QUrl url  = QUrl::fromLocalFile(path);
+    const auto path    = QDir::toNativeSeparators(info.absoluteFilePath());
+    const auto ws_path = path.toStdWString();
 
-    if (!QDesktopServices::openUrl(url)) {
-      const auto e = ::GetLastError();
-      LogShellFailure(L"openUrl", path.toStdWString().c_str(), nullptr, e);
-
-      return Result::makeFailure(e, QString::fromStdWString(formatSystemMessage(e)));
-    }
-
-    return Result::makeSuccess(INVALID_HANDLE_VALUE);
+    return ShellExecuteWrapper(L"explore", ws_path.c_str(), nullptr);
   }
 
   Result ExploreFileInDirectory(const QFileInfo& info)
   {
-    const auto dirPath = QDir::toNativeSeparators(info.absolutePath());
-    const QUrl dirUrl  = QUrl::fromLocalFile(dirPath);
+    const auto path      = QDir::toNativeSeparators(info.absoluteFilePath());
+    const auto params    = "/select,\"" + path + "\"";
+    const auto ws_params = params.toStdWString();
 
-    if (!QDesktopServices::openUrl(dirUrl)) {
-      const auto e = ::GetLastError();
-      LogShellFailure(L"openUrl", dirPath.toStdWString().c_str(), nullptr, e);
-
-      return Result::makeFailure(e, QString::fromStdWString(formatSystemMessage(e)));
-    }
-
-    return Result::makeSuccess(INVALID_HANDLE_VALUE);
+    return ShellExecuteWrapper(nullptr, L"explorer", ws_params.c_str());
   }
 
   Result Explore(const QFileInfo& info)
@@ -863,9 +849,6 @@ bool shellDeleteQuiet(const QString& fileName, QWidget* dialog)
 
 QString readFileText(const QString& fileName, QString* encoding)
 {
-  QStringConverter::Encoding codec = QStringConverter::Encoding::Utf8;
-  QStringEncoder encoder(codec);
-  QStringDecoder decoder(codec);
 
   QFile textFile(fileName);
   if (!textFile.open(QIODevice::ReadOnly)) {
@@ -873,20 +856,28 @@ QString readFileText(const QString& fileName, QString* encoding)
   }
 
   QByteArray buffer = textFile.readAll();
-  QString text      = decoder.decode(buffer);
+  return decodeTextData(buffer, encoding);
+}
+
+QString decodeTextData(const QByteArray& fileData, QString* encoding)
+{
+  QStringConverter::Encoding codec = QStringConverter::Encoding::Utf8;
+  QStringEncoder encoder(codec);
+  QStringDecoder decoder(codec);
+  QString text = decoder.decode(fileData);
 
   // check reverse conversion. If this was unicode text there can't be data loss
   // this assumes QString doesn't normalize the data in any way so this is a bit unsafe
-  if (encoder.encode(text) != buffer) {
+  if (encoder.encode(text) != fileData) {
     log::debug("conversion failed assuming local encoding");
-    auto codecSearch = QStringConverter::encodingForData(buffer);
+    auto codecSearch = QStringConverter::encodingForData(fileData);
     if (codecSearch.has_value()) {
       codec   = codecSearch.value();
       decoder = QStringDecoder(codec);
     } else {
       decoder = QStringDecoder(QStringConverter::Encoding::System);
     }
-    text = decoder.decode(buffer);
+    text = decoder.decode(fileData);
   }
 
   if (encoding != nullptr) {
